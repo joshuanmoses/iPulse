@@ -1,0 +1,380 @@
+# ============================================================================
+#  iPulse configuration
+#
+#  Linux:   /etc/ipulse/ipulse.yaml
+#  Windows: C:\ProgramData\iPulse\config\ipulse.yaml
+#
+#  Every key is optional: anything omitted falls back to the built-in default
+#  documented in docs/configuration.md. Unknown keys are rejected so a typo in a
+#  threshold cannot be silently ignored.
+#
+#  Validate a file without applying it:   ipulse config validate
+#  Print the effective configuration:     ipulse config
+# ============================================================================
+
+service:
+  # Leave empty for the platform default (/var/lib/ipulse, C:\ProgramData\iPulse\data).
+  data_dir: ""
+  # Leave empty for the platform default (/var/log/ipulse, C:\ProgramData\iPulse\logs).
+  log_dir: ""
+  hostname_override: ""
+  shutdown_timeout: 20s
+  # Delay the first full speed test after start-up so boot traffic is not measured.
+  startup_grace: 45s
+
+monitoring:
+  health_interval: 15s
+  dns_interval: 30s
+  latency_interval: 30s
+  interface_interval: 30s
+  wifi_interval: 60s
+  public_ip_interval: 5m
+  route_interval: 30m
+  traffic_interval: 5s
+  connection_interval: 15s
+  health_score_interval: 1m
+  baseline_flush_interval: 5m
+  retention_interval: 6h
+  availability_report_interval: 24h
+  threat_feed_interval: 12h
+  probe_timeout: 5s
+  # Random spread applied to scheduled tasks so they do not all fire together.
+  jitter: 2s
+
+connectivity:
+  # Health-check targets. Keep them in different networks: diversity is what lets
+  # iPulse distinguish "one provider is down" from "our Internet is down".
+  targets:
+    - name: cloudflare-dns
+      type: tcp
+      address: 1.1.1.1:443
+      notes: AS13335
+    - name: google-dns
+      type: tcp
+      address: 8.8.8.8:443
+      notes: AS15169
+    - name: quad9-dns
+      type: tcp
+      address: 9.9.9.9:443
+      notes: AS19281
+  # How many targets must answer for the link to count as up.
+  required_success: 1
+  # Probed without DNS, to separate name resolution failures from path failures.
+  ip_literals:
+    - 1.1.1.1
+    - 8.8.8.8
+    - 9.9.9.9
+    - 208.67.222.222
+  # Verify a full TLS session, not just a TCP handshake.
+  # Independent operators (Cloudflare AS13335, Google AS15169, Amazon AS16509). Note
+  # that http://www.msftconnecttest.com is intended for plain-HTTP captive-portal
+  # detection and does not present a matching certificate, so it is not used here.
+  https_targets:
+    - https://www.cloudflare.com/cdn-cgi/trace
+    - https://connectivitycheck.gstatic.com/generate_204
+    - https://checkip.amazonaws.com
+  failures_before_outage: 2
+  successes_before_recovery: 2
+  # auto prefers ICMP and falls back to TCP when ICMP sockets are not permitted.
+  gateway_probe_method: auto
+  gateway_tcp_ports: [80, 443, 53]
+
+dns:
+  names:
+    - www.google.com
+    - cloudflare.com
+    - wikipedia.org
+    - github.com
+  # Empty means "use the resolvers the operating system is configured with".
+  servers: []
+  # Queried only during diagnostics, to tell a broken local resolver from a broken network.
+  fallback_servers:
+    - 1.1.1.1:53
+    - 8.8.8.8:53
+    - 9.9.9.9:53
+  timeout: 3s
+  slow_threshold: 250ms
+  use_system_resolver: true
+
+latency:
+  targets:
+    - 1.1.1.1
+    - 8.8.8.8
+  probes: 5
+  spacing: 200ms
+  timeout: 2s
+  # auto | icmp | tcp
+  method: auto
+  tcp_port: 443
+  # Measuring the gateway too is what separates local-network latency from Internet latency.
+  include_gateway: true
+
+speed_test:
+  enabled: true
+  provider: http
+  lightweight_interval: 5m
+  full_interval: 30m
+  # Your advertised ISP plan. Set these to get shortfall reporting.
+  #   Expected Download: 500 Mbps
+  #   Expected Upload:    50 Mbps
+  expected_download_mbps: 0
+  expected_upload_mbps: 0
+  streams: 4
+  # Discarded before measurement so TCP slow-start does not depress the result.
+  warmup: 2s
+  duration: 10s
+  upload_duration: 8s
+  # Hard caps so a fast link cannot burn a metered data allowance.
+  max_download_bytes: 536870912
+  max_upload_bytes: 134217728
+  lightweight_bytes: 2097152
+  # Skip a scheduled test when the link is already busier than this (0 disables).
+  skip_if_busy_mbps: 10
+  # latency | first | random
+  endpoint_selection: latency
+  upload_enabled: true
+  timeout: 90s
+  endpoints:
+    - name: cloudflare
+      download_url: https://speed.cloudflare.com/__down?bytes={bytes}
+      upload_url: https://speed.cloudflare.com/__up
+      latency_url: https://speed.cloudflare.com/__down?bytes=1000
+      max_streams: 8
+      location: anycast
+      enabled: true
+    # Any server that can serve a sized body and accept a POST works, including your
+    # own. iPulse does not depend on a proprietary speed-test API.
+    - name: hetzner
+      download_url: https://speed.hetzner.de/100MB.bin
+      max_streams: 4
+      location: Germany
+      enabled: false
+
+traffic:
+  enabled: true
+  # Empty means every non-loopback interface.
+  interfaces: []
+  exclude_interfaces: ["lo", "lo*", "docker*", "br-*", "veth*", "virbr*", "Loopback*"]
+  # Robust z-score (median/MAD based) above which a rate counts as a spike.
+  spike_z_score: 6
+  # Absolute floor, so a statistically large spike on an idle link is ignored.
+  spike_min_mbps: 5
+  sustained_seconds: 300
+  sustained_upload_mbps: 2
+  large_transfer_mb: 512
+  quiet_hours_start: 1
+  quiet_hours_end: 6
+  # Attribute iPulse's own speed-test bytes to iPulse so its tests never raise anomalies.
+  exclude_self_traffic: true
+  error_rate_threshold: 5
+
+connections:
+  enabled: true
+  include_udp: true
+  include_listening: false
+  include_loopback: false
+  resolve_process: true
+  max_connections_per_sample: 4096
+  idle_timeout: 5m
+
+destinations:
+  enabled: true
+  new_destination_window: 24h
+  # No new-destination events during this period after first start, while the initial
+  # picture is built.
+  learning_period: 2h
+  rare_percentile: 5
+  high_volume_mb: 64
+  fanout_window: 1m
+  fanout_threshold: 60
+  expected_ports: [53, 80, 123, 443, 465, 587, 853, 993, 995, 5223, 8443]
+  reverse_dns: true
+  # Optional external enrichment providers. Empty means iPulse contacts nobody.
+  enrichment: []
+  ignore_destinations: []
+  ignore_processes: []
+
+threat_intel:
+  enabled: true
+  # No feed ships by default. Add your own; iPulse is not tied to any vendor.
+  #
+  # feeds:
+  #   - name: local-iocs
+  #     type: ioc
+  #     format: auto
+  #     path: /etc/ipulse/threat/iocs.txt
+  #     confidence: medium
+  #   - name: example-blocklist
+  #     type: ip
+  #     format: plain
+  #     url: https://example.org/blocklist.txt
+  #     confidence: high
+  feeds: []
+  max_indicators: 2000000
+  expire_after: 720h
+  match_private: false
+  allow_list: []
+
+lateral:
+  enabled: true
+  window: 2m
+  host_sweep_threshold: 20
+  port_scan_threshold: 15
+  failed_connection_threshold: 25
+  admin_ports: [22, 135, 139, 445, 3389, 5900, 5985, 5986]
+  admin_sweep_hosts: 5
+  # Approved scanners and management tools that should never raise events.
+  allow_processes: []
+  extra_private_ranges: []
+
+public_ip:
+  enabled: true
+  providers:
+    - https://1.1.1.1/cdn-cgi/trace
+    - https://api.ipify.org
+    - https://icanhazip.com
+  ipv6_providers:
+    - https://api6.ipify.org
+    - https://ipv6.icanhazip.com
+  timeout: 6s
+  # Require two providers to agree before recording a change.
+  confirm_changes: true
+  # ASN/organisation lookup. Empty asn_provider_url uses the DNS-based Team Cymru
+  # service, which needs no API key and no HTTP request.
+  asn_lookup: true
+  asn_provider_url: ""
+
+routing:
+  enabled: true
+  destinations:
+    - 1.1.1.1
+    - 8.8.8.8
+  max_hops: 20
+  probes_per_hop: 1
+  timeout: 20s
+  # ECMP causes benign hop variation; tolerate this many differing hops.
+  hop_change_tolerance: 1
+
+wifi:
+  enabled: true
+  weak_signal_dbm: -70
+  link_speed_degrade_percent: 50
+
+baseline:
+  # Samples required before a metric/time bucket can trigger detection. This is the
+  # primary false-positive guard: raise it if you see noisy anomalies.
+  min_observations: 30
+  window: 336h
+  # Compare 2 PM with other 2 PMs, not with 3 AM.
+  time_buckets: true
+  bucket_hours: 1
+  ewma_alpha: 0.1
+  reservoir_size: 256
+  max_sample_age: 720h
+
+alerts:
+  download_degradation_percent: 40
+  upload_degradation_percent: 40
+  latency_degradation_percent: 100
+  jitter_degradation_percent: 150
+  packet_loss_percent: 2
+  dns_degradation_percent: 200
+  isp_shortfall_percent: 30
+  sustained_upload_seconds: 120
+  sustained_latency_seconds: 120
+  sustained_bandwidth_seconds: 300
+  # Consecutive breaches required before an event is raised.
+  persistence: 2
+  recovery_persistence: 3
+  cooldown: 15m
+  # Suppress relative-deviation alerts while the absolute value is still fine.
+  min_absolute_latency_ms: 30
+  min_absolute_mbps: 5
+
+correlation:
+  enabled: true
+  window: 3m
+  # Hide contributing raw events from the readable log once a rule explains them.
+  # They are still stored in the database.
+  suppress_contributing: true
+
+health:
+  enabled: true
+  weights:
+    availability: 30
+    download: 15
+    upload: 10
+    latency: 20
+    jitter: 8
+    packet_loss: 12
+    dns: 5
+  window: 1h
+  warn_below: 70
+  latency_good_ms: 20
+  latency_bad_ms: 200
+  jitter_good_ms: 3
+  jitter_bad_ms: 50
+  loss_good_percent: 0
+  loss_bad_percent: 5
+  dns_good_ms: 20
+  dns_bad_ms: 500
+
+logging:
+  # debug | info | notice | warning | error | critical
+  level: info
+  text: true
+  json: true
+  database: true
+  syslog: true
+  eventlog: true
+  console: false
+  # Only these and above reach journald / the Windows Event Log.
+  syslog_severity: notice
+  max_file_mb: 100
+  max_archives: 10
+  retention_days: 30
+  compress: true
+  rotate_daily: false
+  file_mode: "0640"
+
+database:
+  # Empty means <data_dir>/ipulse.db
+  path: ""
+  busy_timeout: 5s
+  retention:
+    events_days: 90
+    measurements_days: 30
+    speed_tests_days: 365
+    outages_days: 365
+    connections_days: 14
+    destinations_days: 180
+    traffic_days: 30
+    aggregates_days: 730
+  max_size_mb: 2048
+  vacuum_interval: 24h
+  # Roll raw measurements into hourly aggregates before deleting them, so long-range
+  # charts survive retention.
+  downsample: true
+
+dashboard:
+  enabled: true
+  # Loopback only. Binding elsewhere requires auth_token and is validated as such.
+  address: 127.0.0.1
+  port: 8750
+  auth_token: ""
+  # Host header allow-list; this is what defeats DNS rebinding against the local API.
+  allowed_hosts: ["127.0.0.1", "localhost", "[::1]"]
+  allow_remote_tests: false
+  read_timeout: 15s
+  write_timeout: 60s
+  rate_limit_per_minute: 10
+
+privacy:
+  # iPulse collects metadata only. There is no payload capture and no TLS interception.
+  collect_process_names: true
+  collect_executable_paths: true
+  collect_usernames: true
+  collect_remote_hostnames: true
+  anonymize_local_addresses: false
+  # Reserved. Must remain false; validation rejects true.
+  payload_inspection: false
