@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>iPulse</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    iPulse
+    <span class="version" id="version"></span>
+  </div>
+  <div class="status-line" id="topstatus"></div>
+  <nav class="tabs" id="tabs">
+    <a href="#overview">Overview</a>
+    <a href="#speed">Speed</a>
+    <a href="#latency">Latency</a>
+    <a href="#availability">Availability</a>
+    <a href="#traffic">Traffic</a>
+    <a href="#connections">Connections</a>
+    <a href="#destinations">Destinations</a>
+    <a href="#events">Events</a>
+    <a href="#diagnostics">Diagnostics</a>
+  </nav>
+</header>
+
+<main>
+  <div id="banner"></div>
+
+  <!-- Overview -->
+  <section class="view" id="view-overview">
+    <div class="grid cols-4" id="overview-metrics"></div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <h3>Latency, last 6 hours</h3>
+        <svg class="chart" id="chart-overview-latency"></svg>
+        <div class="chart-legend" id="legend-overview-latency"></div>
+      </div>
+      <div class="panel">
+        <h3>Throughput, last 7 days</h3>
+        <svg class="chart" id="chart-overview-speed"></svg>
+        <div class="chart-legend" id="legend-overview-speed"></div>
+      </div>
+    </div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <h3>Connection</h3>
+        <dl class="kv" id="overview-connection"></dl>
+      </div>
+      <div class="panel">
+        <h3>Recent events</h3>
+        <div id="overview-events"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Speed -->
+  <section class="view" id="view-speed">
+    <div class="grid cols-4" id="speed-metrics"></div>
+    <div class="panel">
+      <h3>Download and upload over time</h3>
+      <div class="controls">
+        <label class="inline">Window
+          <select id="speed-window">
+            <option value="6h">6 hours</option>
+            <option value="24h" selected>24 hours</option>
+            <option value="7d">7 days</option>
+            <option value="30d">30 days</option>
+          </select>
+        </label>
+      </div>
+      <svg class="chart chart-tall" id="chart-speed"></svg>
+      <div class="chart-legend" id="legend-speed"></div>
+    </div>
+    <div class="panel">
+      <h3>Historical analysis</h3>
+      <div class="table-wrap">
+        <table id="speed-history"></table>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Recent tests</h3>
+      <div class="table-wrap">
+        <table id="speed-tests"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Latency -->
+  <section class="view" id="view-latency">
+    <div class="grid cols-4" id="latency-metrics"></div>
+    <div class="controls">
+      <label class="inline">Window
+        <select id="latency-window">
+          <option value="1h">1 hour</option>
+          <option value="6h" selected>6 hours</option>
+          <option value="24h">24 hours</option>
+          <option value="7d">7 days</option>
+        </select>
+      </label>
+    </div>
+    <div class="panel">
+      <h3>Round-trip time</h3>
+      <svg class="chart" id="chart-latency"></svg>
+      <div class="chart-legend" id="legend-latency"></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <h3>Jitter</h3>
+        <svg class="chart" id="chart-jitter"></svg>
+      </div>
+      <div class="panel">
+        <h3>Packet loss</h3>
+        <svg class="chart" id="chart-loss"></svg>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>DNS response time</h3>
+      <svg class="chart" id="chart-dns"></svg>
+    </div>
+  </section>
+
+  <!-- Availability -->
+  <section class="view" id="view-availability">
+    <div class="grid cols-4" id="availability-metrics"></div>
+    <div class="panel">
+      <h3>Outages</h3>
+      <div class="table-wrap">
+        <table id="outage-table"></table>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Availability by cause</h3>
+      <div class="table-wrap">
+        <table id="outage-causes"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Traffic -->
+  <section class="view" id="view-traffic">
+    <div class="grid cols-4" id="traffic-metrics"></div>
+    <div class="controls">
+      <label class="inline">Window
+        <select id="traffic-window">
+          <option value="15m">15 minutes</option>
+          <option value="1h" selected>1 hour</option>
+          <option value="6h">6 hours</option>
+          <option value="24h">24 hours</option>
+        </select>
+      </label>
+      <label class="inline">Interface
+        <select id="traffic-interface"><option value="">all</option></select>
+      </label>
+    </div>
+    <div class="panel">
+      <h3>Throughput</h3>
+      <svg class="chart chart-tall" id="chart-traffic"></svg>
+      <div class="chart-legend" id="legend-traffic"></div>
+    </div>
+    <div class="panel">
+      <h3>Traffic anomalies</h3>
+      <div id="traffic-anomalies"></div>
+    </div>
+  </section>
+
+  <!-- Connections -->
+  <section class="view" id="view-connections">
+    <div class="controls">
+      <input type="search" id="conn-search" placeholder="Search process, address or path" size="34">
+      <label class="inline">Protocol
+        <select id="conn-protocol">
+          <option value="">any</option>
+          <option value="tcp">tcp</option>
+          <option value="udp">udp</option>
+        </select>
+      </label>
+      <label class="inline">Scope
+        <select id="conn-scope">
+          <option value="">any</option>
+          <option value="false">external</option>
+          <option value="true">internal</option>
+        </select>
+      </label>
+      <label class="inline">Since
+        <select id="conn-window">
+          <option value="15m">15 minutes</option>
+          <option value="1h" selected>1 hour</option>
+          <option value="24h">24 hours</option>
+        </select>
+      </label>
+      <button id="conn-refresh">Refresh</button>
+      <span class="faint small" id="conn-count"></span>
+    </div>
+    <div class="panel">
+      <h3>Top processes by outbound activity</h3>
+      <div class="table-wrap"><table id="conn-top"></table></div>
+    </div>
+    <div class="panel">
+      <div class="table-wrap"><table id="conn-table"></table></div>
+    </div>
+  </section>
+
+  <!-- Destinations -->
+  <section class="view" id="view-destinations">
+    <div class="controls">
+      <input type="search" id="dest-search" placeholder="Search address, name, organisation" size="34">
+      <label class="inline">Sort by
+        <select id="dest-order">
+          <option value="last_seen">last seen</option>
+          <option value="contacts">contacts</option>
+          <option value="bytes_sent">bytes sent</option>
+          <option value="first_seen">first seen</option>
+        </select>
+      </label>
+      <label class="inline"><input type="checkbox" id="dest-flagged"> threat matches only</label>
+      <label class="inline"><input type="checkbox" id="dest-new"> new in the last 24 hours</label>
+      <button id="dest-refresh">Refresh</button>
+      <span class="faint small" id="dest-count"></span>
+    </div>
+    <div class="panel">
+      <h3>Threat intelligence</h3>
+      <div id="threat-summary"></div>
+      <div class="table-wrap"><table id="threat-table"></table></div>
+    </div>
+    <div class="panel">
+      <div class="table-wrap"><table id="dest-table"></table></div>
+    </div>
+  </section>
+
+  <!-- Events -->
+  <section class="view" id="view-events">
+    <div class="controls">
+      <input type="search" id="event-search" placeholder="Search event text" size="28">
+      <label class="inline">Severity
+        <select id="event-severity">
+          <option value="">all</option>
+          <option value="debug">debug and above</option>
+          <option value="info">info and above</option>
+          <option value="notice">notice and above</option>
+          <option value="warning" selected>warning and above</option>
+          <option value="error">error and above</option>
+        </select>
+      </label>
+      <label class="inline">Category
+        <select id="event-category"><option value="">all</option></select>
+      </label>
+      <input type="text" id="event-code" placeholder="Event ID" size="8">
+      <input type="text" id="event-process" placeholder="Process" size="12">
+      <input type="text" id="event-destination" placeholder="Destination" size="14">
+      <label class="inline">Since
+        <select id="event-window">
+          <option value="1h">1 hour</option>
+          <option value="24h" selected>24 hours</option>
+          <option value="7d">7 days</option>
+          <option value="30d">30 days</option>
+        </select>
+      </label>
+      <label class="inline"><input type="checkbox" id="event-suppressed"> include correlated</label>
+      <label class="inline"><input type="checkbox" id="event-follow"> follow</label>
+      <button id="event-refresh">Refresh</button>
+    </div>
+    <div class="panel">
+      <div id="event-summary" class="small muted" style="margin-bottom:8px"></div>
+      <div id="event-list"></div>
+    </div>
+  </section>
+
+  <!-- Diagnostics -->
+  <section class="view" id="view-diagnostics">
+    <div class="panel">
+      <h3>Run a test</h3>
+      <p class="small muted">
+        These start real network activity from this host. Results appear in the event log.
+      </p>
+      <div class="controls" id="test-buttons">
+        <button data-test="connectivity">Internet test</button>
+        <button data-test="dns">DNS test</button>
+        <button data-test="latency">Latency test</button>
+        <button data-test="speed" class="primary">Speed test</button>
+        <button data-test="traceroute">Traceroute</button>
+        <button data-test="public-ip">Public IP check</button>
+        <button data-test="diagnostics">Full diagnostics</button>
+      </div>
+      <div id="test-output"></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <h3>Scheduler</h3>
+        <div class="table-wrap"><table id="task-table"></table></div>
+      </div>
+      <div class="panel">
+        <h3>Privileges</h3>
+        <div class="table-wrap"><table id="privilege-table"></table></div>
+      </div>
+    </div>
+    <div class="grid cols-2">
+      <div class="panel">
+        <h3>Interfaces</h3>
+        <div class="table-wrap"><table id="interface-table"></table></div>
+      </div>
+      <div class="panel">
+        <h3>Recent paths</h3>
+        <div class="table-wrap"><table id="route-table"></table></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Storage</h3>
+      <div class="table-wrap"><table id="storage-table"></table></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span id="foot-status"></span>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
