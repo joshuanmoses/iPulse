@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  iPulse MSI installer (WiX Toolset v4 or later).
+
+  Build:  wix build -arch x64 -d Version=1.0.0 -d BinaryPath=..\..\dist\windows-amd64\ipulse.exe ipulse.wxs -o ipulse-1.0.0-x64.msi
+
+  What the package does:
+    * installs ipulse.exe into Program Files\iPulse
+    * creates C:\ProgramData\iPulse\{config,data,logs}
+    * writes a default configuration only if none exists
+    * registers and starts the "iPulse" service through the binary itself, so the
+      service definition can never drift from what `ipulse service install` produces
+    * on uninstall, stops and removes the service and keeps historical data
+
+  The service runs as LocalSystem because the extended TCP/UDP tables (process
+  attribution), the WLAN API and ICMP all require it on Windows. The dashboard and API
+  stay bound to loopback regardless. See docs/security.md.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="iPulse"
+           Manufacturer="iPulse Authors"
+           Version="$(var.Version)"
+           UpgradeCode="7f3d6b52-9c41-4f3a-8b1e-2d5c7a9e4f10"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="iPulse Internet monitoring and network observability agent" />
+
+    <!-- Upgrades replace the previous version in place and keep all data. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of iPulse is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Launch Condition="Installed OR (VersionNT &gt;= 603)"
+            Message="iPulse requires Windows 10, Windows Server 2019 or later." />
+
+    <Property Id="ARPPRODUCTICON" Value="ipulse.exe" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/ipulse/ipulse" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/ipulse/ipulse" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <Feature Id="Main" Title="iPulse agent" Level="1" AllowAbsent="no"
+             Description="The iPulse service, command line and local dashboard.">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <!-- ================================================================ -->
+    <!-- Directories                                                       -->
+    <!-- ================================================================ -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="iPulse" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataRoot" Name="iPulse">
+        <Directory Id="ConfigDir" Name="config" />
+        <Directory Id="DataDir" Name="data" />
+        <Directory Id="LogDir" Name="logs" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ShortcutFolder" Name="iPulse" />
+    </StandardDirectory>
+
+    <!-- ================================================================ -->
+    <!-- Components                                                        -->
+    <!-- ================================================================ -->
+    <ComponentGroup Id="ProductComponents">
+
+      <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="ipulse.exe" Source="$(var.BinaryPath)" KeyPath="yes" Name="ipulse.exe" />
+        <!-- The install directory is added to PATH so `ipulse status` works from any
+             prompt, which is how the command line is documented. -->
+        <Environment Id="PathEntry" Name="PATH" Value="[INSTALLFOLDER]"
+                     Permanent="no" Part="last" Action="set" System="yes" />
+      </Component>
+
+      <!-- The data directories are created here so their ACLs are set by the installer
+           rather than inherited from ProgramData, which is world-readable by default.
+           Connection metadata should not be readable by every local account. -->
+      <Component Id="DataDirectories" Directory="DataDir" Guid="*">
+        <CreateFolder>
+          <util:PermissionEx User="Administrators" GenericAll="yes" />
+          <util:PermissionEx User="SYSTEM" GenericAll="yes" />
+        </CreateFolder>
+        <RegistryValue Root="HKLM" Key="Software\iPulse" Name="DataDir"
+                       Value="[DataDir]" Type="string" KeyPath="yes" />
+      </Component>
+
+      <Component Id="LogDirectory" Directory="LogDir" Guid="*">
+        <CreateFolder>
+          <util:PermissionEx User="Administrators" GenericAll="yes" />
+          <util:PermissionEx User="SYSTEM" GenericAll="yes" />
+        </CreateFolder>
+        <RegistryValue Root="HKLM" Key="Software\iPulse" Name="LogDir"
+                       Value="[LogDir]" Type="string" KeyPath="yes" />
+      </Component>
+
+      <Component Id="ConfigDirectory" Directory="ConfigDir" Guid="*">
+        <CreateFolder />
+        <RegistryValue Root="HKLM" Key="Software\iPulse" Name="ConfigDir"
+                       Value="[ConfigDir]" Type="string" KeyPath="yes" />
+      </Component>
+
+      <Component Id="DashboardShortcut" Directory="ShortcutFolder" Guid="*">
+        <Shortcut Id="DashboardLink" Name="iPulse Dashboard"
+                  Description="Open the local iPulse dashboard"
+                  Target="http://127.0.0.1:8750" />
+        <RemoveFolder Id="RemoveShortcutFolder" Directory="ShortcutFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\iPulse" Name="Shortcut"
+                       Value="1" Type="integer" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- ================================================================ -->
+    <!-- Service registration                                              -->
+    <!--                                                                   -->
+    <!-- The service is registered by running the binary rather than with a -->
+    <!-- ServiceInstall element, so the installed service definition is     -->
+    <!-- exactly what `ipulse service install` creates: same recovery       -->
+    <!-- actions, same delayed start, same Event Log source registration.   -->
+    <!-- ================================================================ -->
+    <CustomAction Id="WriteDefaultConfig"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[INSTALLFOLDER]ipulse.exe&quot; config init"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+
+    <CustomAction Id="InstallService"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[INSTALLFOLDER]ipulse.exe&quot; service install"
+                  Execute="deferred" Impersonate="no" Return="check" />
+
+    <CustomAction Id="UninstallService"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[INSTALLFOLDER]ipulse.exe&quot; service uninstall --keep-data"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="WriteDefaultConfig" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="InstallService" After="WriteDefaultConfig" Condition="NOT Installed" />
+      <!-- Removal happens before the files go away, because the binary does the work. -->
+      <Custom Action="UninstallService" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
+
+    <ui:WixUI Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+
+  </Package>
+</Wix>
